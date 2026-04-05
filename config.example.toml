@@ -1,0 +1,113 @@
+[app]
+poll_interval_seconds = 900
+timezone = "Asia/Seoul"
+database_path = "data/events.db"
+log_path = "logs/circle_monitor.log"
+request_user_agent = "circle-monitor/0.1"
+request_contact_email = "your-email@example.com"
+alert_recency_hours = 48
+bootstrap_lookback_hours = 6
+max_items_per_source = 20
+
+[analysis]
+title_similarity_threshold = 0.83
+content_similarity_threshold = 0.88
+event_window_hours = 168
+
+[llm]
+enabled = false
+provider = "openai"
+model = "gpt-5-mini"
+api_key_env = "OPENAI_API_KEY"
+timeout_seconds = 45
+max_input_chars = 6000
+
+[notifications]
+enabled = ["stdout"]
+
+[notifications.telegram]
+bot_token = ""
+chat_id = ""
+
+[notifications.discord]
+webhook_url = ""
+
+[notifications.slack]
+webhook_url = ""
+
+[[sources]]
+name = "Circle Pressroom"
+kind = "website"
+category = "Circle"
+url = "https://www.circle.com/pressroom"
+publisher = "Circle"
+priority = 1
+item_selector = "a[href*='/pressroom/']"
+
+[[sources]]
+name = "SEC Press Releases"
+kind = "rss"
+category = "SEC"
+url = "https://www.sec.gov/news/pressreleases.rss"
+publisher = "SEC"
+priority = 1
+
+[[sources]]
+name = "Federal Reserve News"
+kind = "rss"
+category = "Regulation"
+url = "https://www.federalreserve.gov/feeds/press_all.xml"
+publisher = "Federal Reserve"
+priority = 1
+
+[[sources]]
+name = "U.S. Treasury Press"
+kind = "website"
+category = "Regulation"
+url = "https://home.treasury.gov/news/press-releases"
+publisher = "U.S. Treasury"
+priority = 1
+item_selector = "a[href*='/news/press-releases/']"
+
+[[sources]]
+name = "Reuters Circle Search"
+kind = "website"
+category = "Stablecoin Market"
+url = "https://www.reuters.com/site-search/?query=Circle%20USDC"
+publisher = "Reuters"
+priority = 2
+item_selector = "a[data-testid='Heading']"
+
+[filters]
+required_keywords = [
+  "circle",
+  "usdc",
+  "stablecoin",
+  "tether",
+  "coinbase",
+  "genius act",
+  "clarity act",
+  "sec",
+  "occ",
+  "federal reserve",
+  "treasury",
+]
+
+high_impact_keywords = [
+  "ipo",
+  "lawsuit",
+  "settlement",
+  "investigation",
+  "reserve",
+  "audit",
+  "mint",
+  "redeem",
+  "launch",
+  "partnership",
+  "approval",
+  "vote",
+  "bill",
+  "hearing",
+  "halt",
+  "outage",
+]
