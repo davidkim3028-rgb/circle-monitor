@@ -182,11 +182,13 @@ class MonitorApplication:
                 LOGGER.info("Sent catch-up alert for '%s'", event.title)
 
     def _send_message_to_notifiers(self, message: str, title: str) -> bool:
+        external_notifiers = {"TelegramNotifier", "DiscordNotifier", "SlackNotifier"}
         delivered = False
         for notifier in self.notifiers:
             try:
                 notifier.send(message)
-                delivered = True
+                if type(notifier).__name__ in external_notifiers:
+                    delivered = True
             except Exception as exc:  # noqa: BLE001
                 LOGGER.exception(
                     "Notifier %s failed for '%s': %s",
