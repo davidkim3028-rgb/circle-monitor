@@ -6,6 +6,7 @@ log_path = "logs/circle_monitor.log"
 request_user_agent = "circle-monitor/0.1"
 request_contact_email = "your-email@example.com"
 alert_recency_hours = 48
+duplicate_notification_cooldown_hours = 12
 bootstrap_lookback_hours = 6
 max_items_per_source = 20
 
@@ -27,13 +28,17 @@ enabled = ["stdout"]
 
 [notifications.telegram]
 bot_token = ""
+bot_token_env = "TELEGRAM_BOT_TOKEN"
 chat_id = ""
+chat_id_env = "TELEGRAM_CHAT_ID"
 
 [notifications.discord]
 webhook_url = ""
+webhook_url_env = "DISCORD_WEBHOOK_URL"
 
 [notifications.slack]
 webhook_url = ""
+webhook_url_env = "SLACK_WEBHOOK_URL"
 
 [[sources]]
 name = "Circle Pressroom"

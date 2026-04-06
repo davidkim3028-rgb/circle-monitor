@@ -65,6 +65,7 @@ class MonitorApplication:
         self.notifiers = build_notifiers(config)
         self.llm_enricher = OpenAIEnricher(config)
         self.timezone = ZoneInfo(config.timezone)
+        self._log_config_warnings()
 
     def run_forever(self) -> None:
         while True:
@@ -86,7 +87,30 @@ class MonitorApplication:
             candidate = self.analyzer.to_candidate(item)
             decision = self.judge.evaluate(candidate, recent_events)
             if not decision.is_new:
-                LOGGER.info("Skipped duplicate item '%s': %s", candidate.title, decision.reason)
+                if is_bootstrap:
+                    LOGGER.info("Skipped duplicate item during bootstrap '%s': %s", candidate.title, decision.reason)
+                    continue
+                if not self._within_alert_window(item):
+                    LOGGER.info("Skipped stale duplicate item '%s': %s", candidate.title, decision.reason)
+                    continue
+                notification_key = self._notification_key(candidate, decision)
+                if self.repo.was_notified_recently(
+                    notification_key,
+                    self.config.duplicate_notification_cooldown_hours,
+                ):
+                    LOGGER.info("Skipped duplicate item '%s': %s", candidate.title, decision.reason)
+                    continue
+                candidate.novelty_reason = (
+                    f"{decision.reason} / no alert sent in the last "
+                    f"{self.config.duplicate_notification_cooldown_hours} hours"
+                )
+                candidate.dedupe_key = notification_key
+                pending_candidates.append(candidate)
+                LOGGER.info(
+                    "Queued duplicate item '%s' because it has not been alerted in %s hours",
+                    candidate.title,
+                    self.config.duplicate_notification_cooldown_hours,
+                )
                 continue
 
             if is_bootstrap:
@@ -118,8 +142,14 @@ class MonitorApplication:
                 try:
                     notifier.send(message)
                 except Exception as exc:  # noqa: BLE001
-                    LOGGER.exception("Notifier failed for '%s': %s", candidate.title, exc)
+                    LOGGER.exception(
+                        "Notifier %s failed for '%s': %s",
+                        notifier.__class__.__name__,
+                        candidate.title,
+                        exc,
+                    )
             self.repo.save_event(candidate)
+            self.repo.record_notification(candidate.dedupe_key, candidate.title, candidate.canonical_url)
             recent_events = self.repo.recent_events(self.config.event_window_hours)
             LOGGER.info("Stored new event '%s'", candidate.title)
 
@@ -136,6 +166,11 @@ class MonitorApplication:
         now = datetime.now(tz=self.timezone)
         cutoff = now - timedelta(hours=self.config.alert_recency_hours)
         return item.published_at >= cutoff
+
+    def _notification_key(self, candidate: EventCandidate, decision) -> str:
+        if getattr(decision, "matched_dedupe_key", None):
+            return decision.matched_dedupe_key
+        return candidate.dedupe_key
 
     def _merge_similar_candidates(self, candidates: list[EventCandidate]) -> list[EventCandidate]:
         merged: list[EventCandidate] = []
@@ -179,6 +214,27 @@ class MonitorApplication:
         return same_category and close_in_time and (
             same_signature or same_cluster or title_similarity >= 0.72 or overlapping_links
         )
+
+    def _log_config_warnings(self) -> None:
+        notifier_names = self.config.enabled_notifiers
+        external_notifiers = {"telegram", "discord", "slack"}
+
+        if not notifier_names:
+            LOGGER.warning("No notifiers are enabled. New events will be stored, but no alerts will be sent.")
+        elif not any(name in external_notifiers for name in notifier_names):
+            LOGGER.warning(
+                "Only non-external notifiers are enabled (%s). Alerts will stay in local stdout/logs.",
+                ", ".join(notifier_names),
+            )
+
+        if self.config.request_contact_email == "your-email@example.com":
+            LOGGER.warning("request_contact_email is still using the placeholder value in config.toml.")
+
+        if self.config.llm_enabled and not self.llm_enricher.api_key:
+            LOGGER.warning(
+                "LLM enrichment is enabled, but %s is not set. The app will continue without OpenAI enrichment.",
+                self.config.llm_api_key_env,
+            )
 
 
 def create_application(config_path: str) -> MonitorApplication:

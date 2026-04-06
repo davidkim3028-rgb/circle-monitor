@@ -12,6 +12,7 @@ class NoveltyDecision:
     is_new: bool
     reason: str
     matched_event_id: int | None = None
+    matched_dedupe_key: str | None = None
 
 
 class NoveltyJudge:
@@ -22,8 +23,8 @@ class NoveltyJudge:
         for event in recent_events:
             if candidate.canonical_url == event.canonical_url:
                 if self._has_new_facts(candidate, event):
-                    return NoveltyDecision(True, f"동일 URL이지만 새 사실 감지: {candidate.novelty_reason}", event.id)
-                return NoveltyDecision(False, "동일 URL의 기존 이벤트", event.id)
+                    return NoveltyDecision(True, f"Same URL but new facts: {candidate.novelty_reason}", event.id, event.dedupe_key)
+                return NoveltyDecision(False, "Duplicate of existing event with same URL", event.id, event.dedupe_key)
 
             title_similarity = SequenceMatcher(None, candidate.title_norm, event.title_norm).ratio()
             content_similarity = jaccard(candidate.content_fingerprint, event.content_fingerprint)
@@ -33,20 +34,50 @@ class NoveltyJudge:
 
             if within_window and title_similarity >= self.config.title_similarity_threshold:
                 if self._has_new_facts(candidate, event):
-                    return NoveltyDecision(True, f"유사 제목이지만 새 사실 감지: {candidate.novelty_reason}", event.id)
-                return NoveltyDecision(False, f"제목 유사도 {title_similarity:.2f}로 기존 사건과 중복", event.id)
+                    return NoveltyDecision(
+                        True,
+                        f"Similar title but new facts: {candidate.novelty_reason}",
+                        event.id,
+                        event.dedupe_key,
+                    )
+                return NoveltyDecision(
+                    False,
+                    f"Duplicate of existing event due to title similarity {title_similarity:.2f}",
+                    event.id,
+                    event.dedupe_key,
+                )
 
             if within_window and content_similarity >= self.config.content_similarity_threshold:
                 if self._has_new_facts(candidate, event):
-                    return NoveltyDecision(True, f"본문 유사하지만 새 사실 감지: {candidate.novelty_reason}", event.id)
-                return NoveltyDecision(False, f"본문 유사도 {content_similarity:.2f}로 기존 사건과 중복", event.id)
+                    return NoveltyDecision(
+                        True,
+                        f"Similar body but new facts: {candidate.novelty_reason}",
+                        event.id,
+                        event.dedupe_key,
+                    )
+                return NoveltyDecision(
+                    False,
+                    f"Duplicate of existing event due to body similarity {content_similarity:.2f}",
+                    event.id,
+                    event.dedupe_key,
+                )
 
             if candidate.cluster_key and candidate.cluster_key == event.cluster_key and within_window:
                 if self._has_new_facts(candidate, event):
-                    return NoveltyDecision(True, f"동일 사건 후속 업데이트로 판단: {candidate.novelty_reason}", event.id)
-                return NoveltyDecision(False, "동일 사건 클러스터의 후속 기사이지만 새 사실 없음", event.id)
+                    return NoveltyDecision(
+                        True,
+                        f"Follow-up in the same cluster with new facts: {candidate.novelty_reason}",
+                        event.id,
+                        event.dedupe_key,
+                    )
+                return NoveltyDecision(
+                    False,
+                    "Duplicate follow-up in the same cluster without new facts",
+                    event.id,
+                    event.dedupe_key,
+                )
 
-        return NoveltyDecision(True, "최근 저장 이벤트와 비교 시 신규 이벤트")
+        return NoveltyDecision(True, "New event compared with recent stored events")
 
     def _has_new_facts(self, candidate: EventCandidate, event: StoredEvent) -> bool:
         if candidate.numeric_markers - event.numeric_markers:

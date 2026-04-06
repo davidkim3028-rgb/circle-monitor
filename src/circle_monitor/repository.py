@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import sqlite3
 
-from circle_monitor.models import EventCandidate, StoredEvent
+from circle_monitor.models import EventCandidate, NotificationRecord, StoredEvent
 
 
 class EventRepository:
@@ -46,6 +46,16 @@ class EventRepository:
             """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_events_dedupe_key
             ON events (dedupe_key)
+            """
+        )
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS notifications (
+                notification_key TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                canonical_url TEXT NOT NULL,
+                last_sent_at TEXT NOT NULL
+            )
             """
         )
         self.connection.commit()
@@ -101,6 +111,39 @@ class EventRepository:
             ),
         )
         self.connection.commit()
+
+    def was_notified_recently(self, notification_key: str, hours: int) -> bool:
+        row = self.connection.execute(
+            """
+            SELECT last_sent_at
+            FROM notifications
+            WHERE notification_key = ?
+            """,
+            (notification_key,),
+        ).fetchone()
+        if row is None:
+            return False
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
+        return datetime.fromisoformat(row["last_sent_at"]) >= cutoff
+
+    def record_notification(self, notification_key: str, title: str, canonical_url: str) -> NotificationRecord:
+        sent_at = datetime.now(UTC).isoformat()
+        self.connection.execute(
+            """
+            INSERT INTO notifications (notification_key, title, canonical_url, last_sent_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(notification_key) DO UPDATE SET
+                title = excluded.title,
+                canonical_url = excluded.canonical_url,
+                last_sent_at = excluded.last_sent_at
+            """,
+            (notification_key, title, canonical_url, sent_at),
+        )
+        self.connection.commit()
+        return NotificationRecord(
+            notification_key=notification_key,
+            last_sent_at=datetime.fromisoformat(sent_at),
+        )
 
     def close(self) -> None:
         self.connection.close()

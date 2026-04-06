@@ -5,8 +5,14 @@ import requests
 from circle_monitor.models import AppConfig
 
 
-def build_session(config: AppConfig) -> requests.Session:
+def build_raw_session(*, trust_env: bool = False) -> requests.Session:
     session = requests.Session()
+    session.trust_env = trust_env
+    return session
+
+
+def build_session(config: AppConfig) -> requests.Session:
+    session = build_raw_session()
     session.headers.update(
         {
             "User-Agent": f"{config.request_user_agent} ({config.request_contact_email})",

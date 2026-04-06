@@ -1,0 +1,17 @@
+[Unit]
+Description=Circle Monitoring Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/circle-monitor
+EnvironmentFile=/home/ubuntu/circle-monitor/deploy/gcp/circle-monitor.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/circle-monitor/.venv/bin/python -m circle_monitor.cli --config /home/ubuntu/circle-monitor/config.toml
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

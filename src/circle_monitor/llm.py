@@ -6,6 +6,7 @@ from typing import Any
 
 import requests
 
+from circle_monitor.http import build_raw_session
 from circle_monitor.models import AppConfig, EventCandidate
 
 
@@ -14,7 +15,7 @@ class OpenAIEnricher:
         self.config = config
         self.api_key = os.getenv(config.llm_api_key_env, "").strip()
         self.temporarily_disabled = False
-        self.session = requests.Session()
+        self.session = build_raw_session()
         self.session.headers.update(
             {
                 "Authorization": f"Bearer {self.api_key}",

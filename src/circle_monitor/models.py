@@ -24,6 +24,7 @@ class AppConfig:
     request_user_agent: str
     request_contact_email: str
     alert_recency_hours: int
+    duplicate_notification_cooldown_hours: int
     bootstrap_lookback_hours: int
     max_items_per_source: int
     title_similarity_threshold: float
@@ -96,3 +97,9 @@ class StoredEvent:
     document_markers: set[str]
     novelty_reason: str
     published_at: datetime
+
+
+@dataclass(slots=True)
+class NotificationRecord:
+    notification_key: str
+    last_sent_at: datetime

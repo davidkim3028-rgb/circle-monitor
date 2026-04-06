@@ -7,6 +7,14 @@ import tomllib
 from circle_monitor.models import AppConfig, SourceConfig
 
 
+def _resolve_setting(value: object, env_name: object) -> str:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if isinstance(env_name, str) and env_name.strip():
+        return os.getenv(env_name.strip(), "").strip()
+    return ""
+
+
 def load_config(path: str) -> AppConfig:
     config_path = Path(path)
     with config_path.open("rb") as handle:
@@ -31,6 +39,26 @@ def load_config(path: str) -> AppConfig:
         for item in data.get("sources", [])
     ]
 
+    notifier_settings = {
+        key: {
+            **value,
+            "bot_token": _resolve_setting(value.get("bot_token"), value.get("bot_token_env")),
+            "chat_id": _resolve_setting(value.get("chat_id"), value.get("chat_id_env")),
+            "webhook_url": _resolve_setting(value.get("webhook_url"), value.get("webhook_url_env")),
+        }
+        for key, value in notifications.items()
+        if isinstance(value, dict)
+    }
+    enabled_notifiers = list(notifications.get("enabled", ["stdout"]))
+    filtered_notifiers: list[str] = []
+    for name in enabled_notifiers:
+        settings = notifier_settings.get(name, {})
+        if name == "telegram" and (not settings.get("bot_token") or not settings.get("chat_id")):
+            continue
+        if name in {"discord", "slack"} and not settings.get("webhook_url"):
+            continue
+        filtered_notifiers.append(name)
+
     return AppConfig(
         poll_interval_seconds=int(app.get("poll_interval_seconds", 900)),
         timezone=app.get("timezone", "Asia/Seoul"),
@@ -39,17 +67,14 @@ def load_config(path: str) -> AppConfig:
         request_user_agent=app.get("request_user_agent", "circle-monitor/0.1"),
         request_contact_email=app.get("request_contact_email", "your-email@example.com"),
         alert_recency_hours=int(app.get("alert_recency_hours", 48)),
+        duplicate_notification_cooldown_hours=int(app.get("duplicate_notification_cooldown_hours", 12)),
         bootstrap_lookback_hours=int(app.get("bootstrap_lookback_hours", 6)),
         max_items_per_source=int(app.get("max_items_per_source", 20)),
         title_similarity_threshold=float(analysis.get("title_similarity_threshold", 0.83)),
         content_similarity_threshold=float(analysis.get("content_similarity_threshold", 0.88)),
         event_window_hours=int(analysis.get("event_window_hours", 168)),
-        enabled_notifiers=list(notifications.get("enabled", ["stdout"])),
-        notifier_settings={
-            key: value
-            for key, value in notifications.items()
-            if isinstance(value, dict)
-        },
+        enabled_notifiers=filtered_notifiers,
+        notifier_settings=notifier_settings,
         sources=sources,
         required_keywords=[item.lower() for item in filters.get("required_keywords", [])],
         high_impact_keywords=[item.lower() for item in filters.get("high_impact_keywords", [])],
