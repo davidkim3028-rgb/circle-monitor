@@ -138,18 +138,10 @@ class MonitorApplication:
                 LOGGER.exception("LLM enrichment failed for '%s': %s", candidate.title, exc)
 
             message = format_alert(candidate, self.config, decision_reason)
-            for notifier in self.notifiers:
-                try:
-                    notifier.send(message)
-                except Exception as exc:  # noqa: BLE001
-                    LOGGER.exception(
-                        "Notifier %s failed for '%s': %s",
-                        notifier.__class__.__name__,
-                        candidate.title,
-                        exc,
-                    )
+            delivered = self._send_message_to_notifiers(message, candidate.title)
             self.repo.save_event(candidate)
-            self.repo.record_notification(candidate.dedupe_key, candidate.title, candidate.canonical_url)
+            if delivered:
+                self.repo.record_notification(candidate.dedupe_key, candidate.title, candidate.canonical_url)
             recent_events = self.repo.recent_events(self.config.event_window_hours)
             LOGGER.info("Stored new event '%s'", candidate.title)
 
