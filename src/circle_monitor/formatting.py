@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from zoneinfo import ZoneInfo
 
-from circle_monitor.models import AppConfig, EventCandidate
+from circle_monitor.models import AppConfig, EventCandidate, StoredEvent
 
 
 def format_alert(candidate: EventCandidate, config: AppConfig, novelty_reason: str) -> str:
@@ -31,4 +31,15 @@ def format_alert(candidate: EventCandidate, config: AppConfig, novelty_reason: s
         f"{links}\n\n"
         f"5. 중복 여부 체크 결과\n\n"
         f"* {novelty_reason}\n"
+    )
+
+
+def format_stored_event_alert(event: StoredEvent, config: AppConfig, reason: str) -> str:
+    published_at = event.published_at.astimezone(ZoneInfo(config.timezone))
+    return (
+        f"[재전송 알림] {event.title}\n\n"
+        f"* 발생 시각(KST): {published_at.strftime('%Y-%m-%d %H:%M:%S %Z')}\n"
+        f"* 카테고리: {event.category}\n"
+        f"* 링크: {event.canonical_url}\n\n"
+        f"* 사유: {reason}\n"
     )

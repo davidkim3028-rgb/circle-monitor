@@ -9,10 +9,10 @@ from zoneinfo import ZoneInfo
 from circle_monitor.analysis import EventAnalyzer
 from circle_monitor.config import load_config
 from circle_monitor.dedupe import NoveltyJudge
-from circle_monitor.formatting import format_alert
+from circle_monitor.formatting import format_alert, format_stored_event_alert
 from circle_monitor.logging_utils import configure_logging
 from circle_monitor.llm import OpenAIEnricher
-from circle_monitor.models import AppConfig, EventCandidate, RawItem
+from circle_monitor.models import AppConfig, EventCandidate, RawItem, StoredEvent
 from circle_monitor.notifiers.base import BaseNotifier
 from circle_monitor.notifiers.discord import DiscordNotifier
 from circle_monitor.notifiers.slack import SlackNotifier
@@ -153,6 +153,8 @@ class MonitorApplication:
             recent_events = self.repo.recent_events(self.config.event_window_hours)
             LOGGER.info("Stored new event '%s'", candidate.title)
 
+        self._send_catch_up_alerts()
+
     def _collect_items(self) -> list[RawItem]:
         items: list[RawItem] = []
         for source in self.sources:
@@ -171,6 +173,36 @@ class MonitorApplication:
         if getattr(decision, "matched_dedupe_key", None):
             return decision.matched_dedupe_key
         return candidate.dedupe_key
+
+    def _send_catch_up_alerts(self) -> None:
+        events = self.repo.recent_unnotified_events(
+            self.config.alert_recency_hours,
+            self.config.duplicate_notification_cooldown_hours,
+        )
+        for event in events:
+            message = format_stored_event_alert(
+                event,
+                self.config,
+                f"not sent in the last {self.config.duplicate_notification_cooldown_hours} hours",
+            )
+            if self._send_message_to_notifiers(message, event.title):
+                self.repo.record_notification(event.dedupe_key, event.title, event.canonical_url)
+                LOGGER.info("Sent catch-up alert for '%s'", event.title)
+
+    def _send_message_to_notifiers(self, message: str, title: str) -> bool:
+        delivered = False
+        for notifier in self.notifiers:
+            try:
+                notifier.send(message)
+                delivered = True
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.exception(
+                    "Notifier %s failed for '%s': %s",
+                    notifier.__class__.__name__,
+                    title,
+                    exc,
+                )
+        return delivered
 
     def _merge_similar_candidates(self, candidates: list[EventCandidate]) -> list[EventCandidate]:
         merged: list[EventCandidate] = []

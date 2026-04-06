@@ -78,6 +78,24 @@ class EventRepository:
         ).fetchall()
         return [self._row_to_event(row) for row in rows]
 
+    def recent_unnotified_events(self, event_hours: int, notification_hours: int, limit: int = 20) -> list[StoredEvent]:
+        event_cutoff = datetime.now(UTC) - timedelta(hours=event_hours)
+        notification_cutoff = datetime.now(UTC) - timedelta(hours=notification_hours)
+        rows = self.connection.execute(
+            """
+            SELECT e.*
+            FROM events e
+            LEFT JOIN notifications n
+                ON n.notification_key = e.dedupe_key
+            WHERE e.published_at >= ?
+              AND (n.last_sent_at IS NULL OR n.last_sent_at < ?)
+            ORDER BY e.published_at DESC
+            LIMIT ?
+            """,
+            (event_cutoff.isoformat(), notification_cutoff.isoformat(), limit),
+        ).fetchall()
+        return [self._row_to_event(row) for row in rows]
+
     def save_event(self, candidate: EventCandidate) -> None:
         self.connection.execute(
             """

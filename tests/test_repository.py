@@ -42,9 +42,13 @@ def test_repository_stores_and_reads_recent_events() -> None:
         events = repo.recent_events(24)
         assert len(events) == 1
         assert events[0].title == "Circle launches service"
+        pending = repo.recent_unnotified_events(24, 12)
+        assert len(pending) == 1
+        assert pending[0].title == "Circle launches service"
         assert not repo.was_notified_recently("abc", 12)
         repo.record_notification("abc", candidate.title, candidate.canonical_url)
         assert repo.was_notified_recently("abc", 12)
+        assert repo.recent_unnotified_events(24, 12) == []
     finally:
         repo.close()
         if db_path.exists():
